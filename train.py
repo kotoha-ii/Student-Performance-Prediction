@@ -24,7 +24,7 @@ CONFIG = {
         "SVM": {"class": SVMModel, "params": {"probability": True}},
         "MLP": {"class": None, "params": {"hidden_layer_sizes": (128, 64)}},
         "CNN": {"class": None, "params": {}},
-        "LSTM": {"class": LSTMModel, "params": {"num_epochs": 10, "batch_size": 32,}}
+        "LSTM": {"class": LSTMModel, "params": {"num_epochs": 100, "batch_size": 64,}},
     },
     "output_dir": "results",        # 输出目录
     "save_models": False,           # 是否保存模型
@@ -155,63 +155,88 @@ def visualize_results(results, label_type):
     """
     可视化模型性能对比
     """
-    # 展平结果数据以便可视化
+
     flat_results = {}
     for model_name, model_data in results.items():
-        # 合并外层和内层 metrics
         flat_results[model_name] = {
             "train_time": model_data["train_time"],
-            **model_data["metrics"]  # 包含训练和测试指标
+            **model_data["metrics"]
         }
-    
-    # 创建结果数据框
+
     df_results = pd.DataFrame(flat_results).T
-    
-    # 1. 训练集性能指标柱状图
-    plt.figure(figsize=(15, 8))
+    df_results.index.name = 'Model'
+    df_results.reset_index(inplace=True)
+
+    palette = sns.color_palette("Set2", n_colors=len(df_results))
+
+    # 1. 训练集性能指标图
     train_metrics = ['train_accuracy', 'train_precision', 'train_recall', 'train_f1']
-    
+    plt.figure(figsize=(12, 8))
     for i, metric in enumerate(train_metrics):
         plt.subplot(2, 2, i+1)
-        sns.barplot(x=df_results.index, y=metric, data=df_results)
-        plt.title(f"training performance: {metric.split('_')[1].capitalize()}")
+        sns.barplot(
+            x='Model', y=metric, data=df_results,
+            palette=palette
+        )
+        plt.ylim(0, 1)
+        plt.title(f"Train {metric.split('_')[1].capitalize()}", fontsize=12)
         plt.ylabel(metric.split('_')[1])
-        plt.xticks(rotation=45)
-        plt.tight_layout()
-    
+        plt.xticks(rotation=30)
+        plt.grid(axis='y', linestyle='--', alpha=0.5)
+
+        # 添加数值标签
+        for idx, val in enumerate(df_results[metric]):
+            plt.text(idx, val + 0.01, f"{val:.2f}", ha='center', fontsize=9)
+
+    plt.tight_layout()
     train_plot_path = os.path.join(CONFIG["output_dir"], f"train_performance_{label_type}.png")
     plt.savefig(train_plot_path)
     plt.close()
     print(f"训练集性能对比图保存至: {train_plot_path}")
-    
-    # 2. 测试集性能指标柱状图
-    plt.figure(figsize=(15, 8))
+
+    # 2. 测试集性能指标图
     test_metrics = ['test_accuracy', 'test_precision', 'test_recall', 'test_f1']
-    
+    plt.figure(figsize=(12, 8))
     for i, metric in enumerate(test_metrics):
         plt.subplot(2, 2, i+1)
-        sns.barplot(x=df_results.index, y=metric, data=df_results)
-        plt.title(f"test performance: {metric.split('_')[1].capitalize()}")
+        sns.barplot(
+            x='Model', y=metric, data=df_results,
+            palette=palette
+        )
+        plt.ylim(0, 1)
+        plt.title(f"Test {metric.split('_')[1].capitalize()}", fontsize=12)
         plt.ylabel(metric.split('_')[1])
-        plt.xticks(rotation=45)
-        plt.tight_layout()
-    
+        plt.xticks(rotation=30)
+        plt.grid(axis='y', linestyle='--', alpha=0.5)
+
+        for idx, val in enumerate(df_results[metric]):
+            plt.text(idx, val + 0.01, f"{val:.2f}", ha='center', fontsize=9)
+
+    plt.tight_layout()
     test_plot_path = os.path.join(CONFIG["output_dir"], f"test_performance_{label_type}.png")
     plt.savefig(test_plot_path)
     plt.close()
     print(f"测试集性能对比图保存至: {test_plot_path}")
-    
+
     # 3. 训练时间对比
     plt.figure(figsize=(10, 6))
-    sns.barplot(x=df_results.index, y='train_time', data=df_results)
-    plt.title("Models Training Time")
+    sns.barplot(x='Model', y='train_time', data=df_results, palette=palette)
+    plt.title("Training Time (Seconds)", fontsize=13)
     plt.ylabel("Time (s)")
-    plt.xticks(rotation=45)
-    
+    plt.xticks(rotation=30)
+    plt.grid(axis='y', linestyle='--', alpha=0.5)
+
+    for idx, val in enumerate(df_results['train_time']):
+        plt.text(idx, val + 0.1, f"{val:.1f}", ha='center', fontsize=9)
+
+    plt.tight_layout()
     time_plot_path = os.path.join(CONFIG["output_dir"], f"training_time_{label_type}.png")
     plt.savefig(time_plot_path)
     plt.close()
     print(f"训练时间对比图保存至: {time_plot_path}")
+
+    
+    
 
 def save_results(results, label_type):
     """保存结果到文件"""
