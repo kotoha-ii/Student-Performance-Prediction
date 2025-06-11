@@ -9,6 +9,8 @@ from sklearn.metrics import precision_score, recall_score, f1_score
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from sklearn.linear_model import LogisticRegression
+
 
 class SVMModel:
     """
@@ -469,3 +471,133 @@ class MLPModel:
         self.model.load_state_dict(torch.load(path))
         self.model.to(self.device)
         self.logger.info(f"Model loaded from {path}")
+
+
+class LogisticRegressionModel:
+    def __init__(self, penalty='l2', C=1.0, solver='lbfgs', max_iter=200, log_dir="logs"):
+        self.model = LogisticRegression(penalty=penalty, C=C, solver=solver, max_iter=max_iter)
+        self.log_dir = log_dir
+
+    def fit(self, X_train, y_train, X_val=None, y_val=None):
+        self.model.fit(X_train, y_train)
+        return self.evaluate(X_train, y_train, X_val, y_val)
+
+    def evaluate(self, X_train, y_train, X_test, y_test):
+        y_pred_train = self.model.predict(X_train)
+        y_pred_test = self.model.predict(X_test)
+        y_prob_train = self.model.predict_proba(X_train)[:, 1]
+        y_prob_test = self.model.predict_proba(X_test)[:, 1]
+        metrics = {
+            "train_accuracy": accuracy_score(y_train, y_pred_train),
+            "train_precision": precision_score(y_train, y_pred_train),
+            "train_recall": recall_score(y_train, y_pred_train),
+            "train_f1": f1_score(y_train, y_pred_train),
+            "train_auc": roc_auc_score(y_train, y_prob_train),
+            "test_accuracy": accuracy_score(y_test, y_pred_test),
+            "test_precision": precision_score(y_test, y_pred_test),
+            "test_recall": recall_score(y_test, y_pred_test),
+            "test_f1": f1_score(y_test, y_pred_test),
+            "test_auc": roc_auc_score(y_test, y_prob_test)
+        }
+        return metrics
+
+    def save(self, path):
+        joblib.dump(self.model, path)
+
+    def load(self, path):
+        self.model = joblib.load(path)
+
+class RNNNet(nn.Module):
+    def __init__(self, input_dim, hidden_dim=64, num_layers=1, dropout=0.3):
+        super(RNNNet, self).__init__()
+        self.rnn = nn.RNN(input_dim, hidden_dim, num_layers=num_layers, batch_first=True, dropout=dropout)
+        self.fc = nn.Linear(hidden_dim, 1)
+
+    def forward(self, x):
+        _, hn = self.rnn(x)
+        out = self.fc(hn[-1])
+        return torch.sigmoid(out)
+
+class RNNModel:
+    def __init__(self, input_dim=None, hidden_dim=64, lr=1e-3, num_epochs=10, batch_size=64, log_dir="logs", device=None):
+        self.input_dim = input_dim
+        self.hidden_dim = hidden_dim
+        self.lr = lr
+        self.num_epochs = num_epochs
+        self.batch_size = batch_size
+        self.log_dir = log_dir
+        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        self.model = None
+
+    def fit(self, X_train, y_train, X_val=None, y_val=None):
+        X_train = torch.tensor(X_train, dtype=torch.float32)
+        y_train = torch.tensor(y_train.values, dtype=torch.float32).view(-1, 1)
+
+        if X_val is not None:
+            X_val = torch.tensor(X_val, dtype=torch.float32)
+            y_val = torch.tensor(y_val.values, dtype=torch.float32).view(-1, 1)
+
+        if self.input_dim is None:
+            self.input_dim = X_train.shape[2]
+
+        self.model = RNNNet(self.input_dim, self.hidden_dim).to(self.device)
+        criterion = nn.BCELoss()
+        optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
+
+        for epoch in range(self.num_epochs):
+            self.model.train()
+            total_loss = 0
+            for i in range(0, len(X_train), self.batch_size):
+                xb = X_train[i:i+self.batch_size].to(self.device)
+                yb = y_train[i:i+self.batch_size].to(self.device)
+                optimizer.zero_grad()
+                preds = self.model(xb)
+                loss = criterion(preds, yb)
+                loss.backward()
+                optimizer.step()
+                total_loss += loss.item()
+            print(f"Epoch {epoch+1}/{self.num_epochs}, Loss: {total_loss:.4f}")
+
+        return self.evaluate(X_train, y_train, X_val, y_val)
+
+    def evaluate(self, X_train, y_train, X_test, y_test):
+        self.model.eval()
+        with torch.no_grad():
+            def predict(X):
+                probs = self.model(torch.tensor(X, dtype=torch.float32).to(self.device)).cpu().numpy().flatten()
+                return (probs >= 0.5).astype(int), probs
+
+            y_pred_train, prob_train = predict(X_train)
+            y_pred_test, prob_test = predict(X_test)
+
+        metrics = {
+            "train_accuracy": accuracy_score(y_train, y_pred_train),
+            "train_precision": precision_score(y_train, y_pred_train),
+            "train_recall": recall_score(y_train, y_pred_train),
+            "train_f1": f1_score(y_train, y_pred_train),
+            "train_auc": roc_auc_score(y_train, prob_train),
+
+            "test_accuracy": accuracy_score(y_test, y_pred_test),
+            "test_precision": precision_score(y_test, y_pred_test),
+            "test_recall": recall_score(y_test, y_pred_test),
+            "test_f1": f1_score(y_test, y_pred_test),
+            "test_auc": roc_auc_score(y_test, prob_test),
+        }
+
+        return metrics
+
+    def save(self, path):
+        torch.save(self.model.state_dict(), path + ".pt")
+        with open(path + "_meta.pkl", "wb") as f:
+            joblib.dump({"input_dim": self.input_dim}, f)
+
+    def load(self, path):
+        with open(path + "_meta.pkl", "rb") as f:
+            meta = joblib.load(f)
+        self.input_dim = meta["input_dim"]
+        self.model = RNNNet(self.input_dim, self.hidden_dim)
+        self.model.load_state_dict(torch.load(path + ".pt"))
+        self.model.to(self.device)
+        self.model.eval()
+
+

@@ -7,7 +7,7 @@ import seaborn as sns
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from read_data import build_dataset
-from models import SVMModel, LSTMModel
+from models import SVMModel, LSTMModel, RandomForestModel, MLPModel, LogisticRegressionModel, RNNModel
 
 # 配置参数
 CONFIG = {
@@ -19,11 +19,11 @@ CONFIG = {
     "val_size": 0.25,               # 验证集比例（从训练集中划分）
     "random_state": 42,             # 随机种子
     "models": {                     # 待训练模型配置D
-        "LogisticRegression": {"class": None, "params": {}},
-        "RandomForest/XGBoost": {"class": None, "params": {"n_estimators": 100}},
+        "LogisticRegression": {"class": LogisticRegressionModel, "params": {"max_iter": 200}},
+        "RandomForest": {"class": RandomForestModel, "params": {"n_estimators": 100}},
         "SVM": {"class": SVMModel, "params": {"probability": True}},
-        "MLP": {"class": None, "params": {"hidden_layer_sizes": (128, 64)}},
-        "CNN": {"class": None, "params": {}},
+        "MLP": {"class": MLPModel, "params": {"hidden_layer_sizes": (128, 64)}},
+        "RNN": {"class": RNNModel, "params": {"num_epochs": 10, "batch_size": 64,}},
         "LSTM": {"class": LSTMModel, "params": {"num_epochs": 10, "batch_size": 64,}},
     },
     "output_dir": "results",        # 输出目录
