@@ -21,17 +21,14 @@ python train.py
 
 ## 2. 选用模型
 
-### a. Logistic Regression
+ **models.py**
 
-### b. Random Forest / 梯度提升树（如 XGBoost、LightGBM、CatBoost）
-
-### c. SVM
-
-### d. MLP
-
-### e. LSTM
-
-### f. RNN
++ a. Logistic Regression
++ b. Random Forest / 梯度提升树（如 XGBoost、LightGBM、CatBoost）
++ c. SVM
++ d. MLP
++ e. RNN
++ f. LSTM
 
 ## 3. 添加模型
 

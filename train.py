@@ -24,7 +24,7 @@ CONFIG = {
         "SVM": {"class": SVMModel, "params": {"probability": True}},
         "MLP": {"class": None, "params": {"hidden_layer_sizes": (128, 64)}},
         "CNN": {"class": None, "params": {}},
-        "LSTM": {"class": LSTMModel, "params": {"num_epochs": 100, "batch_size": 64,}},
+        "LSTM": {"class": LSTMModel, "params": {"num_epochs": 10, "batch_size": 64,}},
     },
     "output_dir": "results",        # 输出目录
     "save_models": False,           # 是否保存模型
