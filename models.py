@@ -2,6 +2,7 @@ import os
 import logging
 import joblib
 import matplotlib.pyplot as plt
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support, roc_auc_score, confusion_matrix, roc_curve
 from sklearn.metrics import precision_score, recall_score, f1_score
@@ -239,3 +240,232 @@ class LSTMModel:
         self.model.load_state_dict(torch.load(path + ".pt"))
         self.model.to(self.device)
         self.model.eval()
+
+
+class RandomForestModel:
+    def __init__(self, logger=None, log_dir='logs', **params):
+        os.makedirs(log_dir, exist_ok=True)
+
+        self.logger = logging.getLogger('RandomForest')
+        self.logger.setLevel(logging.INFO)
+
+        if self.logger.hasHandlers():
+            self.logger.handlers.clear()
+
+        # 为随机森林创建专用日志文件
+        rf_log_path = os.path.join(log_dir, 'random_forest.log')
+        file_handler = logging.FileHandler(rf_log_path)
+        stream_handler = logging.StreamHandler()
+
+        formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+        file_handler.setFormatter(formatter)
+        stream_handler.setFormatter(formatter)
+
+        self.logger.addHandler(file_handler)
+        self.logger.addHandler(stream_handler)
+
+        self.logger.info("=== Initializing Random Forest Model ===")
+        self.model = RandomForestClassifier(**params)
+        self.logger.info(f"Initialized RandomForest with params: {params}")
+
+    def fit(self, X_train, y_train, X_val=None, y_val=None):
+        self.logger.info("Starting training...")
+        self.model.fit(X_train, y_train)
+        self.logger.info("Training completed.")
+
+        results = {}
+        # 训练集指标
+        y_pred_train = self.model.predict(X_train)
+        self._calculate_metrics(y_train, y_pred_train, results, 'train')
+
+        # 验证集指标
+        if X_val is not None and y_val is not None:
+            self.logger.info("Evaluating on validation set...")
+            y_pred_val = self.model.predict(X_val)
+            self._calculate_metrics(y_val, y_pred_val, results, 'test')
+            try:
+                proba_val = self.model.predict_proba(X_val)[:, 1]
+                self._calculate_auc(y_val, proba_val, results, 'test')
+            except Exception as e:
+                self.logger.warning(f"AUC calculation failed: {str(e)}")
+
+        return results
+
+    def _calculate_metrics(self, y_true, y_pred, results, prefix):
+        acc = accuracy_score(y_true, y_pred)
+        precision, recall, f1, _ = precision_recall_fscore_support(
+            y_true, y_pred, average='binary', zero_division=0
+        )
+        results.update({
+            f'{prefix}_accuracy': acc,
+            f'{prefix}_precision': precision,
+            f'{prefix}_recall': recall,
+            f'{prefix}_f1': f1
+        })
+        self.logger.info(
+            f"{prefix.capitalize()} metrics - Acc: {acc:.4f}, "
+            f"Precision: {precision:.4f}, Recall: {recall:.4f}, F1: {f1:.4f}"
+        )
+
+    def _calculate_auc(self, y_true, proba, results, prefix):
+        auc = roc_auc_score(y_true, proba)
+        results[f'{prefix}_auc'] = auc
+        self.logger.info(f"{prefix.capitalize()} AUC: {auc:.4f}")
+        # 绘制ROC曲线
+        fpr, tpr, _ = roc_curve(y_true, proba)
+        plt.figure()
+        plt.plot(fpr, tpr, label=f'{prefix} ROC (AUC = {auc:.4f})')
+        plt.plot([0, 1], [0, 1], 'k--')
+        plt.xlabel('False Positive Rate')
+        plt.ylabel('True Positive Rate')
+        plt.title(f'{prefix.capitalize()} ROC Curve')
+        plt.legend(loc='lower right')
+        plt.grid(True)
+        plt.tight_layout()
+        plt.savefig(f"results/{prefix}_roc_curve.png")
+        plt.close()
+
+    def save(self, path):
+        joblib.dump(self.model, path)
+        self.logger.info(f"Model saved to {path}")
+
+    def load(self, path):
+        self.model = joblib.load(path)
+        self.logger.info(f"Model loaded from {path}")
+
+
+class MLPModel:
+    def __init__(self, input_dim=None, hidden_layer_sizes=(128, 64), lr=0.001,
+                 num_epochs=20, batch_size=64, log_dir='logs', device=None):
+        self.input_dim = input_dim
+        self.hidden_dims = hidden_layer_sizes
+        self.lr = lr
+        self.num_epochs = num_epochs
+        self.batch_size = batch_size
+        self.log_dir = log_dir
+        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+
+        # 创建模型特定的日志器
+        os.makedirs(log_dir, exist_ok=True)
+        self.logger = logging.getLogger('MLP')
+        self.logger.setLevel(logging.INFO)
+
+        # 清除现有处理器（防止重复写入）
+        if self.logger.hasHandlers():
+            self.logger.handlers.clear()
+
+        # 创建文件处理器
+        mlp_log_path = os.path.join(log_dir, 'mlp_model.log')
+        file_handler = logging.FileHandler(mlp_log_path)
+        stream_handler = logging.StreamHandler()
+
+        # 设置格式
+        formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+        file_handler.setFormatter(formatter)
+        stream_handler.setFormatter(formatter)
+
+        # 添加处理器
+        self.logger.addHandler(file_handler)
+        self.logger.addHandler(stream_handler)
+
+        self.logger.info("=== Initializing MLP Model ===")
+
+        if input_dim:
+            self._init_model(input_dim)
+
+    def _init_model(self, input_dim):
+        layers = []
+        prev_dim = input_dim
+        for dim in self.hidden_dims:
+            layers.append(nn.Linear(prev_dim, dim))
+            layers.append(nn.ReLU())
+            layers.append(nn.Dropout(0.2))
+            prev_dim = dim
+        layers.append(nn.Linear(prev_dim, 1))
+
+        self.model = nn.Sequential(*layers).to(self.device)
+        self.logger.info(f"Initialized MLP with architecture: {self.model}")
+
+    def fit(self, X_train, y_train, X_val=None, y_val=None):
+        # 数据转换
+        X_train = torch.tensor(X_train, dtype=torch.float32)
+        y_train = torch.tensor(y_train.values, dtype=torch.float32).view(-1, 1)
+
+        if self.input_dim is None:
+            self.input_dim = X_train.shape[1]
+            self._init_model(self.input_dim)
+
+        # 初始化训练组件
+        criterion = nn.BCEWithLogitsLoss()
+        optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
+
+        # 训练循环
+        self.logger.info("Starting training...")
+        for epoch in range(self.num_epochs):
+            self.model.train()
+            total_loss = 0
+            for i in range(0, len(X_train), self.batch_size):
+                batch_x = X_train[i:i + self.batch_size].to(self.device)
+                batch_y = y_train[i:i + self.batch_size].to(self.device)
+
+                optimizer.zero_grad()
+                outputs = self.model(batch_x)
+                loss = criterion(outputs, batch_y)
+                loss.backward()
+                optimizer.step()
+                total_loss += loss.item()
+
+            self.logger.info(f"Epoch {epoch + 1}/{self.num_epochs} | Loss: {total_loss / len(X_train):.4f}")
+
+        # 评估指标
+        results = self._evaluate(X_train, y_train, X_val, y_val)
+        return results
+
+    def _evaluate(self, X_train, y_train, X_val, y_val):
+        self.model.eval()
+        results = {}
+
+        with torch.no_grad():
+            # 训练集评估
+            y_pred_train = self._predict(X_train)
+            self._calc_metrics(y_train.numpy(), y_pred_train, results, 'train')
+
+            # 验证集评估
+            if X_val is not None and y_val is not None:
+                X_val_tensor = torch.tensor(X_val, dtype=torch.float32)
+                y_val_tensor = torch.tensor(y_val.values, dtype=torch.float32)
+                y_pred_val = self._predict(X_val_tensor)
+                self._calc_metrics(y_val_tensor.numpy(), y_pred_val, results, 'test')
+
+        return results
+
+    def _predict(self, X):
+        outputs = self.model(X.to(self.device))
+        probs = torch.sigmoid(outputs).cpu().numpy().flatten()
+        return (probs >= 0.5).astype(int)
+
+    def _calc_metrics(self, y_true, y_pred, results, prefix):
+        acc = accuracy_score(y_true, y_pred)
+        precision, recall, f1, _ = precision_recall_fscore_support(
+            y_true, y_pred, average='binary', zero_division=0
+        )
+        results.update({
+            f'{prefix}_accuracy': acc,
+            f'{prefix}_precision': precision,
+            f'{prefix}_recall': recall,
+            f'{prefix}_f1': f1
+        })
+        self.logger.info(
+            f"{prefix.capitalize()} Metrics - "
+            f"Accuracy: {acc:.4f}, Precision: {precision:.4f}, "
+            f"Recall: {recall:.4f}, F1: {f1:.4f}"
+        )
+
+    def save(self, path):
+        torch.save(self.model.state_dict(), path)
+        self.logger.info(f"Model saved to {path}")
+
+    def load(self, path):
+        self.model.load_state_dict(torch.load(path))
+        self.model.to(self.device)
+        self.logger.info(f"Model loaded from {path}")
