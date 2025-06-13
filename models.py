@@ -3,13 +3,13 @@ import logging
 import joblib
 import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
 from sklearn.svm import SVC
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support, roc_auc_score, confusion_matrix, roc_curve
 from sklearn.metrics import precision_score, recall_score, f1_score
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from sklearn.linear_model import LogisticRegression
 
 
 class SVMModel:
@@ -67,7 +67,8 @@ class SVMModel:
         results['train_precision'] = precision
         results['train_recall'] = recall
         results['train_f1'] = f1
-        self.logger.info(f"Train metrics - Acc: {acc_train:.4f}, Precision: {precision:.4f}, Recall: {recall:.4f}, F1: {f1:.4f}")
+        self.logger.info(
+            f"Train metrics - Acc: {acc_train:.4f}, Precision: {precision:.4f}, Recall: {recall:.4f}, F1: {f1:.4f}")
 
         # Validation metrics
         if X_val is not None and y_val is not None:
@@ -106,7 +107,8 @@ class SVMModel:
         metrics[f'{prefix}_precision'] = precision
         metrics[f'{prefix}_recall'] = recall
         metrics[f'{prefix}_f1'] = f1
-        self.logger.info(f"{prefix.capitalize()} metrics - Acc: {acc:.4f}, Precision: {precision:.4f}, Recall: {recall:.4f}, F1: {f1:.4f}")
+        self.logger.info(
+            f"{prefix.capitalize()} metrics - Acc: {acc:.4f}, Precision: {precision:.4f}, Recall: {recall:.4f}, F1: {f1:.4f}")
 
         # ROC AUC if probabilities available
         try:
@@ -146,20 +148,25 @@ class SVMModel:
         self.model = joblib.load(path)
         self.logger.info(f"Model loaded from {path}")
 
+    def get_model(self):
+        return self.model
+
 
 class LSTMNet(nn.Module):
     def __init__(self, input_dim, hidden_dim=64, num_layers=1, dropout=0.3):
         super(LSTMNet, self).__init__()
         self.lstm = nn.LSTM(input_dim, hidden_dim, num_layers=num_layers, batch_first=True, dropout=dropout)
         self.fc = nn.Linear(hidden_dim, 1)
-    
+
     def forward(self, x):
         _, (hn, _) = self.lstm(x)  # 取最后一层 hidden state
         out = self.fc(hn[-1])
         return torch.sigmoid(out)
 
+
 class LSTMModel:
-    def __init__(self, input_dim=None, hidden_dim=64, lr=1e-3, num_epochs=10, batch_size=64, log_dir="logs", device=None):
+    def __init__(self, input_dim=None, hidden_dim=64, lr=1e-3, num_epochs=10, batch_size=64, log_dir="logs",
+                 device=None):
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
         self.lr = lr
@@ -168,7 +175,7 @@ class LSTMModel:
         self.log_dir = log_dir
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.model = None
-    
+
     def fit(self, X_train, y_train, X_val=None, y_val=None):
         X_train = torch.tensor(X_train, dtype=torch.float32)
         y_train = torch.tensor(y_train.values, dtype=torch.float32).view(-1, 1)
@@ -188,8 +195,8 @@ class LSTMModel:
             self.model.train()
             total_loss = 0
             for i in range(0, len(X_train), self.batch_size):
-                xb = X_train[i:i+self.batch_size].to(self.device)
-                yb = y_train[i:i+self.batch_size].to(self.device)
+                xb = X_train[i:i + self.batch_size].to(self.device)
+                yb = y_train[i:i + self.batch_size].to(self.device)
 
                 optimizer.zero_grad()
                 preds = self.model(xb)
@@ -197,8 +204,8 @@ class LSTMModel:
                 loss.backward()
                 optimizer.step()
                 total_loss += loss.item()
-            
-            print(f"Epoch {epoch+1}/{self.num_epochs}, Loss: {total_loss:.4f}")
+
+            print(f"Epoch {epoch + 1}/{self.num_epochs}, Loss: {total_loss:.4f}")
 
         # 评估
         return self.evaluate(X_train, y_train, X_val, y_val)
@@ -334,6 +341,9 @@ class RandomForestModel:
     def load(self, path):
         self.model = joblib.load(path)
         self.logger.info(f"Model loaded from {path}")
+
+    def get_model(self):
+        return self.model
 
 
 class MLPModel:
@@ -472,6 +482,9 @@ class MLPModel:
         self.model.to(self.device)
         self.logger.info(f"Model loaded from {path}")
 
+    def get_model(self):
+        return self.model
+
 
 class LogisticRegressionModel:
     def __init__(self, penalty='l2', C=1.0, solver='lbfgs', max_iter=200, log_dir="logs"):
@@ -507,6 +520,10 @@ class LogisticRegressionModel:
     def load(self, path):
         self.model = joblib.load(path)
 
+    def get_model(self):
+        return self.model
+
+
 class RNNNet(nn.Module):
     def __init__(self, input_dim, hidden_dim=64, num_layers=1, dropout=0.3):
         super(RNNNet, self).__init__()
@@ -518,8 +535,10 @@ class RNNNet(nn.Module):
         out = self.fc(hn[-1])
         return torch.sigmoid(out)
 
+
 class RNNModel:
-    def __init__(self, input_dim=None, hidden_dim=64, lr=1e-3, num_epochs=10, batch_size=64, log_dir="logs", device=None):
+    def __init__(self, input_dim=None, hidden_dim=64, lr=1e-3, num_epochs=10, batch_size=64, log_dir="logs",
+                 device=None):
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
         self.lr = lr
@@ -548,15 +567,15 @@ class RNNModel:
             self.model.train()
             total_loss = 0
             for i in range(0, len(X_train), self.batch_size):
-                xb = X_train[i:i+self.batch_size].to(self.device)
-                yb = y_train[i:i+self.batch_size].to(self.device)
+                xb = X_train[i:i + self.batch_size].to(self.device)
+                yb = y_train[i:i + self.batch_size].to(self.device)
                 optimizer.zero_grad()
                 preds = self.model(xb)
                 loss = criterion(preds, yb)
                 loss.backward()
                 optimizer.step()
                 total_loss += loss.item()
-            print(f"Epoch {epoch+1}/{self.num_epochs}, Loss: {total_loss:.4f}")
+            print(f"Epoch {epoch + 1}/{self.num_epochs}, Loss: {total_loss:.4f}")
 
         return self.evaluate(X_train, y_train, X_val, y_val)
 
@@ -599,5 +618,3 @@ class RNNModel:
         self.model.load_state_dict(torch.load(path + ".pt"))
         self.model.to(self.device)
         self.model.eval()
-
-
